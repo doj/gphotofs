@@ -29,3 +29,4 @@ Makefile
 /_build/
 /_i/
 /_install/
+*~
