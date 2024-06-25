@@ -10,4 +10,4 @@ fi
 set -e
 autoreconf -i
 ./configure
-make
+make -j
