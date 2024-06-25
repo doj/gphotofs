@@ -12,7 +12,7 @@
 #include "config.h"
 #endif
 
-#include <fuse.h>
+#include <fuse3/fuse.h>
 
 #include <gphoto2/gphoto2.h>
 
@@ -158,12 +158,10 @@ static GPCtx *sGPGlobalCtx = NULL;
  * Function definitions
  */
 
-static int gphotofs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi);
+static int gphotofs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi, enum fuse_readdir_flags fl);
 
 static int
-dummyfiller(void *buf, const char *name,
-            const struct stat *stbuf, off_t off
-) {
+dummyfiller(void *buf, const char *name, const struct stat *stbuf, off_t off, enum fuse_fill_dir_flags fl) {
    return 0;
 }
 
@@ -189,7 +187,7 @@ gphotofs_check_events() {
             case GP_EVENT_FOLDER_ADDED:
             case GP_EVENT_FILE_ADDED: {
                 CameraFilePath  *path = eventdata;
-                gphotofs_readdir(path->folder, NULL, dummyfiller, 0, NULL);
+                gphotofs_readdir(path->folder, NULL, dummyfiller, 0, NULL, /*fuse_readdir_flags=*/0);
                 break;
             }
             case GP_EVENT_UNKNOWN:
@@ -208,7 +206,8 @@ gphotofs_readdir(const char *path,
                  void *buf,
                  fuse_fill_dir_t filler,
                  off_t offset,
-                 struct fuse_file_info *fi)
+                 struct fuse_file_info *fi,
+                 enum fuse_readdir_flags fl)
 {
    GPCtx *p;
    CameraList *list = NULL;
@@ -222,8 +221,8 @@ gphotofs_readdir(const char *path,
    if (event_ret == GP_ERROR_IO_USB_FIND || event_ret == GP_ERROR_MODEL_NOT_FOUND)
         return gpresultToErrno(event_ret);
 
-   filler(buf, ".", NULL, 0);
-   filler(buf, "..", NULL, 0);
+   filler(buf, ".", NULL, 0, fl);
+   filler(buf, "..", NULL, 0, fl);
 
    /* Read directories */
    gp_list_new(&list);
@@ -246,7 +245,7 @@ gphotofs_readdir(const char *path,
       stbuf->st_gid = getgid();
 
       gp_list_get_name(list, i, &name);
-      filler(buf, name, stbuf, 0);
+      filler(buf, name, stbuf, 0, fl);
 
       key = g_build_filename(path, name, NULL);
 
@@ -294,7 +293,7 @@ gphotofs_readdir(const char *path,
       stbuf->st_blocks = (info.file.size / 512) +
                          (info.file.size % 512 > 0 ? 1 : 0);
 
-      filler(buf, name, stbuf, 0);
+      filler(buf, name, stbuf, 0, fl);
 
       key = g_build_filename(path, name, NULL);
 
@@ -314,7 +313,8 @@ exit:
 
 static int
 gphotofs_getattr(const char *path,
-                 struct stat *stbuf)
+                 struct stat *stbuf,
+                 struct fuse_file_info *fi)
 {
    int ret = 0;
    GPCtx *p = (GPCtx *)fuse_get_context()->private_data;
@@ -355,7 +355,7 @@ gphotofs_getattr(const char *path,
       }
 
       dir = g_path_get_dirname(path);
-      ret = gphotofs_readdir(dir, NULL, dummyfiller, 0, NULL);
+      ret = gphotofs_readdir(dir, NULL, dummyfiller, 0, NULL, /*fuse_readdir_flags=*/0);
       g_free(dir);
       if (ret != 0) {
 	 return ret;
@@ -633,12 +633,12 @@ static int gphotofs_fsync(const char *path, int isdatasync,
 
 
 
-static int gphotofs_chmod(const char *path, mode_t mode)
+static int gphotofs_chmod(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
     return 0;
 }
 
-static int gphotofs_chown(const char *path, uid_t uid, gid_t gid)
+static int gphotofs_chown(const char *path, uid_t uid, gid_t gid, struct fuse_file_info *fi)
 {
     return 0;
 }
@@ -1016,7 +1016,7 @@ main(int argc,
    if (sHelp) {
       const char *fusehelp[] = { argv[0], "-ho", NULL};
 
-      return fuse_main(2, (char **)fusehelp, &gphotofs_oper);
+      return fuse_main(2, (char **)fusehelp, &gphotofs_oper, /*private_data=*/0);
    } else if (sUsbid) {
       g_fprintf(stderr, "--usbid is not yet implemented\n");
       return 1;
@@ -1034,6 +1034,6 @@ main(int argc,
         return 1;
     }
 
-     return fuse_main(argc+1, newargv, &gphotofs_oper);
+     return fuse_main(argc+1, newargv, &gphotofs_oper, /*private_data=*/0);
    }
 }
